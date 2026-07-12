@@ -52,12 +52,17 @@ public class S3StorageService implements StorageService {
     private final S3Presigner s3Presigner;
     private final String      bucket;
     private final String      imageBaseUrl;   // root of public image URLs
+    private final String      docsBucket;     // PRIVATE bucket — documents, presigned GET only
+    private final String      docsBaseUrl;    // stored-URL root for documents (auth-required, not public)
 
     public S3StorageService(S3Client s3Client, S3Presigner s3Presigner, AppProperties appProperties) {
         this.s3Client    = s3Client;
         this.s3Presigner = s3Presigner;
         AppProperties.Aws aws = appProperties.getAws();
         this.bucket = aws.getS3().getBucketName();
+        String configuredDocsBucket = aws.getS3().getDocsBucketName();
+        this.docsBucket = (configuredDocsBucket == null || configuredDocsBucket.isBlank())
+            ? this.bucket : configuredDocsBucket;
 
         String endpoint  = aws.getEndpoint();
         String publicUrl = aws.getPublicUrl();
@@ -76,6 +81,19 @@ public class S3StorageService implements StorageService {
             this.imageBaseUrl = "https://%s.s3.%s.amazonaws.com".formatted(bucket, aws.getRegion());
             log.info("S3StorageService active (AWS S3) — bucket: {}, region: {}", bucket, aws.getRegion());
         }
+
+        // Document URLs are never public: prefer the S3-API endpoint (path-style,
+        // SigV4-gated on R2/MinIO) over any public CDN URL. Stored URLs are only
+        // parsed back by this class (presign/delete) — clients get presigned GETs.
+        if (endpoint != null && !endpoint.isBlank()) {
+            this.docsBaseUrl = endpoint + "/" + docsBucket;
+        } else if (publicUrl == null || publicUrl.isBlank()) {
+            this.docsBaseUrl = "https://%s.s3.%s.amazonaws.com".formatted(docsBucket, aws.getRegion());
+        } else {
+            this.docsBaseUrl = imageBaseUrl; // public-URL-only setup: no separate private path exists
+        }
+        log.info("Documents bucket: {} ({})", docsBucket,
+            docsBucket.equals(bucket) ? "shared with images — set MINIO_DOCS_BUCKET for a private bucket" : "private");
     }
 
     @Override
@@ -180,7 +198,7 @@ public class S3StorageService implements StorageService {
 
         try {
             PutObjectRequest putReq = PutObjectRequest.builder()
-                .bucket(bucket)
+                .bucket(docsBucket)
                 .key(key)
                 .contentType(file.getContentType())
                 .contentLength(file.getSize())
@@ -188,8 +206,8 @@ public class S3StorageService implements StorageService {
 
             s3Client.putObject(putReq, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
 
-            String url = imageBaseUrl + "/" + key;
-            log.info("Document uploaded: {}", url);
+            String url = docsBaseUrl + "/" + key;
+            log.info("Document uploaded to {}: {}", docsBucket, key);
             return url;
         } catch (IOException e) {
             log.error("S3 document upload failed for property {}: {}", propertyId, e.getMessage());
@@ -199,15 +217,31 @@ public class S3StorageService implements StorageService {
 
     @Override
     public void deleteDocument(String docUrl) {
-        // Same S3 URL pattern as images — reuse extractor.
-        deleteImage(docUrl);
+        String[] loc = resolveBucketAndKey(docUrl);
+        if (loc == null) {
+            log.warn("Could not resolve S3 location for document URL: {}", docUrl);
+            return;
+        }
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(loc[0]).key(loc[1]).build());
+            log.info("S3 document deleted: {}/{}", loc[0], loc[1]);
+        } catch (Exception e) {
+            log.warn("Could not delete S3 document: {}", docUrl);
+        }
     }
 
     @Override
     public void deleteAllPropertyDocuments(UUID propertyId) {
         String prefix = "documents/%s/".formatted(propertyId);
+        deleteByPrefix(docsBucket, prefix, propertyId);
+        // Legacy: documents uploaded before the private bucket existed live in
+        // the images bucket under the same prefix — sweep those too.
+        if (!docsBucket.equals(bucket)) deleteByPrefix(bucket, prefix, propertyId);
+    }
+
+    private void deleteByPrefix(String inBucket, String prefix, UUID propertyId) {
         try {
-            var listReq = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build();
+            var listReq = ListObjectsV2Request.builder().bucket(inBucket).prefix(prefix).build();
             var objects = s3Client.listObjectsV2(listReq).contents();
             if (objects.isEmpty()) return;
 
@@ -216,28 +250,28 @@ public class S3StorageService implements StorageService {
                 .collect(Collectors.toList());
 
             s3Client.deleteObjects(DeleteObjectsRequest.builder()
-                .bucket(bucket)
+                .bucket(inBucket)
                 .delete(d -> d.objects(toDelete))
                 .build());
 
-            log.info("Deleted {} S3 documents for property {}", toDelete.size(), propertyId);
+            log.info("Deleted {} S3 documents in {} for property {}", toDelete.size(), inBucket, propertyId);
         } catch (Exception e) {
-            log.warn("Could not delete S3 documents for property {}: {}", propertyId, e.getMessage());
+            log.warn("Could not delete S3 documents in {} for property {}: {}", inBucket, propertyId, e.getMessage());
         }
     }
 
     @Override
     public String presignDownloadUrl(String storedUrl) {
-        String key = extractKeyFromUrl(storedUrl);
-        if (key == null) {
+        String[] loc = resolveBucketAndKey(storedUrl);
+        if (loc == null) {
             // Fall back to the stored URL — caller still gets *something* clickable.
-            log.warn("Could not extract S3 key from URL, returning raw URL: {}", storedUrl);
+            log.warn("Could not resolve S3 location from URL, returning raw URL: {}", storedUrl);
             return storedUrl;
         }
         try {
             GetObjectRequest getReq = GetObjectRequest.builder()
-                .bucket(bucket)
-                .key(key)
+                .bucket(loc[0])
+                .key(loc[1])
                 .build();
 
             GetObjectPresignRequest presignReq = GetObjectPresignRequest.builder()
@@ -247,9 +281,26 @@ public class S3StorageService implements StorageService {
 
             return s3Presigner.presignGetObject(presignReq).url().toString();
         } catch (Exception e) {
-            log.error("Failed to presign GET for key {}: {}", key, e.getMessage());
+            log.error("Failed to presign GET for key {}: {}", loc[1], e.getMessage());
             return storedUrl;
         }
+    }
+
+    /**
+     * Resolve a stored URL to {bucket, key}. New document URLs live under
+     * docsBaseUrl (private bucket); legacy URLs (public CDN / MinIO / AWS
+     * virtual-hosted) resolve to the images bucket so pre-migration rows
+     * keep presigning and deleting correctly.
+     */
+    private String[] resolveBucketAndKey(String url) {
+        if (url == null) return null;
+        String docsPrefix = docsBaseUrl + "/";
+        if (url.startsWith(docsPrefix)) return new String[]{ docsBucket, url.substring(docsPrefix.length()) };
+        int idx = url.indexOf(".amazonaws.com/");
+        if (idx >= 0) return new String[]{ bucket, url.substring(idx + ".amazonaws.com/".length()) };
+        String legacyPrefix = imageBaseUrl + "/";
+        if (url.startsWith(legacyPrefix)) return new String[]{ bucket, url.substring(legacyPrefix.length()) };
+        return null;
     }
 
     @Override

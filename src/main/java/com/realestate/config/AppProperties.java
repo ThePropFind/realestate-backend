@@ -62,6 +62,12 @@ public class AppProperties {
         @Data
         public static class S3 {
             private String bucketName;
+            /**
+             * Separate PRIVATE bucket for verification documents (FMB/EC/patta).
+             * No public access — reads go through presigned GETs only.
+             * Blank/unset → falls back to bucketName (single-bucket dev setups).
+             */
+            private String docsBucketName;
         }
     }
 
