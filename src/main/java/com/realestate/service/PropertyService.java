@@ -471,7 +471,18 @@ public class PropertyService {
             throw new BadRequestException("Rejection reason is required");
         }
 
+        // Enforce the "verified listings" claim: a listing can only go ACTIVE
+        // (publicly visible) with at least one verification document on file.
+        if (req.getStatus() == Property.ListingStatus.ACTIVE
+                && !documentRepository.existsByPropertyId(id)) {
+            throw new BadRequestException(
+                "Cannot approve a listing with no verification documents");
+        }
+
         property.setStatus(req.getStatus());
+        if (req.getStatus() == Property.ListingStatus.ACTIVE) {
+            property.setVerified(true);   // document-backed + admin-approved
+        }
         if (req.getRejectionReason() != null) {
             property.setRejectionReason(req.getRejectionReason());
         }

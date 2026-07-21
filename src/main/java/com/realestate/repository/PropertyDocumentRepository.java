@@ -8,5 +8,6 @@ import java.util.UUID;
 
 public interface PropertyDocumentRepository extends JpaRepository<PropertyDocument, UUID> {
     List<PropertyDocument> findByPropertyId(UUID propertyId);
+    boolean existsByPropertyId(UUID propertyId);
     void deleteByPropertyId(UUID propertyId);
 }

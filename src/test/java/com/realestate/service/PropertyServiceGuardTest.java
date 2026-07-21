@@ -6,6 +6,8 @@ import com.realestate.entity.User;
 import com.realestate.exception.BadRequestException;
 import com.realestate.exception.ResourceNotFoundException;
 import com.realestate.exception.UnauthorizedException;
+import com.realestate.dto.property.PropertyDtos.StatusUpdateRequest;
+import com.realestate.repository.PropertyDocumentRepository;
 import com.realestate.repository.PropertyImageRepository;
 import com.realestate.repository.PropertyRepository;
 import org.junit.jupiter.api.Test;
@@ -28,8 +30,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class PropertyServiceGuardTest {
 
-    @Mock private PropertyRepository      propertyRepository;
-    @Mock private PropertyImageRepository imageRepository;
+    @Mock private PropertyRepository         propertyRepository;
+    @Mock private PropertyImageRepository    imageRepository;
+    @Mock private PropertyDocumentRepository documentRepository;
 
     @InjectMocks private PropertyService propertyService;
 
@@ -62,6 +65,21 @@ class PropertyServiceGuardTest {
         assertThatThrownBy(() ->
             propertyService.uploadImage(id, file, false, "owner@x.in"))
             .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void updateStatus_approveWithNoDocuments_throwsBadRequest() {
+        UUID id = UUID.randomUUID();
+        when(propertyRepository.findById(id))
+            .thenReturn(Optional.of(ownedBy(id, "owner@x.in", Property.ListingStatus.PENDING_REVIEW)));
+        when(documentRepository.existsByPropertyId(id)).thenReturn(false);
+
+        StatusUpdateRequest req = new StatusUpdateRequest();
+        req.setStatus(Property.ListingStatus.ACTIVE);
+
+        assertThatThrownBy(() -> propertyService.updateStatus(id, req))
+            .isInstanceOf(BadRequestException.class)
+            .hasMessageContaining("verification documents");
     }
 
     @Test
