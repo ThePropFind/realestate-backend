@@ -36,9 +36,35 @@ EXPOSE 8080
 # Sentry SDK added ~30-50MB and tipped it over — three OOM kills in 15 min
 # (regression #58). 60% (~307MB heap) keeps total RSS under 512MB.
 # Revisit when moving to a paid instance (ROADMAP Phase 5).
+#
+# 2026-08-15: a deploy died at exit 137 again, but NOT from a kernel OOM — Render
+# logged "Port scan timeout reached" first, then SIGKILLed. Spring binds the Tomcat
+# connector at the very END of context refresh, so Hikari (26s on a cold Neon
+# resume), Flyway and Hibernate all have to finish before Render sees an open port.
+# On a free instance (WEB_CONCURRENCY=1, ~0.1 CPU) that boot ran 4.5min against a
+# 5min window. The fix is startup CPU, and memory only insofar as GC burns it:
+#   TieredStopAtLevel=1  stops at C1 — JIT compilation is the single biggest CPU
+#                        consumer during boot, and C2 buys nothing on a container
+#                        that gets killed before it warms up. Costs peak
+#                        throughput; irrelevant until the Phase 5 paid tier.
+#   SerialGC             fewer GC threads to schedule on a fraction of a core.
+# Each memory region also gets a ceiling now — capping the heap alone left the
+# rest unbounded, so the total was never actually budgeted:
+#   heap     256MB  (50% — this app serves 10 listings; it never needed 307)
+#   metaspace 128MB (was UNBOUNDED; Spring Boot settles ~110MB)
+#   code cache 64MB (default reserves 240MB)
+#   stacks    ~25MB (50 Tomcat threads x 512k — see server.tomcat.threads.max
+#                    in application-prod.properties; Spring's default is 200)
+# SerialGC because G1's region tables and per-GC-thread structures cost real
+# native memory that a single-core 512MB instance gains nothing back from.
 ENTRYPOINT ["java", \
   "-Djava.security.egd=file:/dev/./urandom", \
   "-XX:+UseContainerSupport", \
-  "-XX:MaxRAMPercentage=60.0", \
+  "-XX:MaxRAMPercentage=50.0", \
+  "-XX:MaxMetaspaceSize=128m", \
+  "-XX:ReservedCodeCacheSize=64m", \
+  "-XX:+UseSerialGC", \
+  "-XX:TieredStopAtLevel=1", \
+  "-Xss512k", \
   "-Dlogging.file.name=/app/logs/app.log", \
   "-jar", "app.jar"]
