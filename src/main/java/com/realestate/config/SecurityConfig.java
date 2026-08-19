@@ -80,10 +80,15 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/properties/*/inquiries").permitAll()
                 // Site-visit bookings — guests may also book without an account
                 .requestMatchers(HttpMethod.POST, "/properties/*/site-visits").permitAll()
+                // Reporting a listing — guests too; an account wall would mean the
+                // listings most worth flagging get flagged least. Rate-limited instead.
+                .requestMatchers(HttpMethod.POST, "/properties/*/reports").permitAll()
                 .requestMatchers(HttpMethod.GET, "/search/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/cities/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/localities/**").permitAll()
                 .requestMatchers(HttpMethod.GET, "/agents/**").permitAll()
+                // Public seller/agent profile — carries no phone and no email (see UserDtos)
+                .requestMatchers(HttpMethod.GET, "/users/*/public").permitAll()
 
                 // Admin routes — only ADMIN role
                 .requestMatchers("/admin/**").hasRole("ADMIN")

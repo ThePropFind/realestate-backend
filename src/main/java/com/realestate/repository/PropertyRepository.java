@@ -37,6 +37,14 @@ public interface PropertyRepository extends JpaRepository<Property, UUID>,
 
     long countByOwnerIdAndStatus(UUID ownerId, Property.ListingStatus status);
 
+    /**
+     * Backs the public owner profile. Status is a parameter rather than hardcoded so the
+     * caller states which slice it wants — the public path must only ever pass ACTIVE.
+     * Pageable caps the result; a prolific seller must not return an unbounded page.
+     */
+    List<Property> findByOwnerIdAndStatusOrderByCreatedAtDesc(
+            UUID ownerId, Property.ListingStatus status, Pageable pageable);
+
     @Query("SELECT COUNT(p) FROM Property p WHERE p.status = :status")
     long countByStatus(@Param("status") Property.ListingStatus status);
 
