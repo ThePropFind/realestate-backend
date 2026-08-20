@@ -63,6 +63,52 @@ class PropertyRequestContractTest {
     }
 
     @Test
+    void pincode_sixDigits_passesValidation() {
+        PropertyRequest req = validBase();
+        req.setPincode("641012");
+
+        assertThat(validator().validate(req))
+            .noneMatch(v -> v.getPropertyPath().toString().equals("pincode"));
+    }
+
+    @Test
+    void pincode_omitted_passesValidation() {
+        assertThat(validator().validate(validBase()))
+            .noneMatch(v -> v.getPropertyPath().toString().equals("pincode"));
+    }
+
+    /** Blank is a cleared form field, not a typo — the service normalises it to null. */
+    @Test
+    void pincode_blank_passesValidation() {
+        PropertyRequest req = validBase();
+        req.setPincode("");
+
+        assertThat(validator().validate(req))
+            .noneMatch(v -> v.getPropertyPath().toString().equals("pincode"));
+    }
+
+    @Test
+    void pincode_leadingZero_isRejected() {
+        PropertyRequest req = validBase();
+        req.setPincode("041012");
+
+        assertThat(validator().validate(req))
+            .anyMatch(v -> v.getPropertyPath().toString().equals("pincode"));
+    }
+
+    @Test
+    void pincode_wrongLength_isRejected() {
+        for (String bad : new String[] { "12345", "6410123", "64101a" }) {
+            PropertyRequest req = validBase();
+            req.setPincode(bad);
+
+            assertThat(validator().validate(req))
+                .as("pincode %s", bad)
+                .anyMatch(v -> v.getPropertyPath().toString().equals("pincode"));
+        }
+    }
+
+    @Test
     void preferredTenant_allValues_areBindable() throws Exception {
         for (Property.PreferredTenant t : Property.PreferredTenant.values()) {
             PropertyRequest req = mapper.readValue(

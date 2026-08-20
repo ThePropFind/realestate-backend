@@ -128,6 +128,10 @@ public class Property {
     @Column(name = "address_line", columnDefinition = "TEXT")
     private String addressLine;
 
+    // Six-digit Indian PIN. Nullable — pre-V16 listings were never backfilled.
+    @Column(length = 6)
+    private String pincode;
+
     @Column(precision = 9, scale = 6)
     private BigDecimal latitude;
 

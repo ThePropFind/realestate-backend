@@ -136,6 +136,7 @@ public class PropertyService {
             .possessionStatus(req.getPossessionStatus())
             .preferredTenant(req.getPreferredTenant())
             .addressLine(req.getAddressLine())
+            .pincode(blankToNull(req.getPincode()))
             .latitude(req.getLatitude())
             .longitude(req.getLongitude())
             .amenities(amenities)
@@ -212,6 +213,7 @@ public class PropertyService {
         property.setAgeOfProperty(req.getAgeOfProperty() != null ? req.getAgeOfProperty().shortValue() : null);
         property.setAvailableFrom(req.getAvailableFrom());
         property.setAddressLine(req.getAddressLine());
+        property.setPincode(blankToNull(req.getPincode()));
         property.setLatitude(req.getLatitude());
         property.setLongitude(req.getLongitude());
         property.setParkingAvailable(req.isParkingAvailable());
@@ -555,6 +557,14 @@ public class PropertyService {
         return p.getRefSeq() != null ? String.format("PF%09d", p.getRefSeq()) : null;
     }
 
+    /**
+     * An omitted optional field and a cleared form field mean the same thing here.
+     * Storing "" would trip the V16 CHECK constraint, so it never reaches the column.
+     */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
     private PropertyDetailResponse toDetailResponse(Property p, boolean includeDocuments) {
         List<ImageResponse> images = p.getImages().stream()
             .map(img -> ImageResponse.builder()
@@ -633,12 +643,14 @@ public class PropertyService {
                 p.getLocality().getId(), p.getLocality().getCity().getId()))
             .preferredTenant(p.getPreferredTenant() != null ? p.getPreferredTenant().name() : null)
             .addressLine(p.getAddressLine())
+            .pincode(p.getPincode())
             .latitude(p.getLatitude())
             .longitude(p.getLongitude())
             .localityName(p.getLocality().getName())
             .localitySlug(p.getLocality().getSlug())
             .cityName(p.getLocality().getCity().getName())
             .citySlug(p.getLocality().getCity().getSlug())
+            .cityState(p.getLocality().getCity().getState())
             .isFeatured(p.isFeatured())
             .isVerified(p.isVerified())
             .viewsCount(p.getViewsCount())

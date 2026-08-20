@@ -69,7 +69,8 @@ class PropertyDetailProjectionTest {
             .createdAt(JOINED)
             .build();
 
-        City city = City.builder().id(UUID.randomUUID()).name("Coimbatore").slug("coimbatore").build();
+        City city = City.builder().id(UUID.randomUUID())
+            .name("Coimbatore").slug("coimbatore").state("Tamil Nadu").build();
         Locality locality = Locality.builder()
             .id(UUID.randomUUID()).name("Gandhipuram").slug("gandhipuram").city(city).build();
 
@@ -85,6 +86,8 @@ class PropertyDetailProjectionTest {
             .priceUnit(Property.PriceUnit.TOTAL)
             .furnishing(Property.FurnishingStatus.SEMI_FURNISHED)
             .areaSqft(new BigDecimal("1938"))
+            .addressLine("14 Kamaraj Road, Gandhipuram")
+            .pincode("641012")
             .images(List.of())
             .amenities(Set.of())
             .build();
@@ -204,5 +207,43 @@ class PropertyDetailProjectionTest {
         // The dead fields are gone, not nulled.
         assertThat(json).doesNotContain("avgRating");
         assertThat(json).doesNotContain("agencyName");
+    }
+
+    // ── Address projection (R0) ──────────────────────────────────
+
+    @Test
+    void detail_carriesPincodeAndCityState() {
+        when(propertyRepository.findById(propertyId)).thenReturn(Optional.of(listing(true)));
+        when(documentRepository.findByPropertyId(propertyId)).thenReturn(List.of());
+
+        PropertyDetailResponse res = propertyService.getById(propertyId);
+
+        assertThat(res.getPincode()).isEqualTo("641012");
+        assertThat(res.getCityState()).isEqualTo("Tamil Nadu");
+    }
+
+    @Test
+    void detail_serializesPincodeAndCityStateUnderTheExpectedNames() throws Exception {
+        when(propertyRepository.findById(propertyId)).thenReturn(Optional.of(listing(true)));
+        when(documentRepository.findByPropertyId(propertyId)).thenReturn(List.of());
+
+        String json = MAPPER.writeValueAsString(propertyService.getById(propertyId));
+
+        assertThat(json).contains("\"pincode\":\"641012\"");
+        assertThat(json).contains("\"cityState\":\"Tamil Nadu\"");
+    }
+
+    /** Pre-V16 listings were never backfilled — null must survive to the client, not blow up. */
+    @Test
+    void detail_withNoPincode_projectsNull() {
+        Property p = listing(true);
+        p.setPincode(null);
+        when(propertyRepository.findById(propertyId)).thenReturn(Optional.of(p));
+        when(documentRepository.findByPropertyId(propertyId)).thenReturn(List.of());
+
+        PropertyDetailResponse res = propertyService.getById(propertyId);
+
+        assertThat(res.getPincode()).isNull();
+        assertThat(res.getCityState()).isEqualTo("Tamil Nadu");
     }
 }

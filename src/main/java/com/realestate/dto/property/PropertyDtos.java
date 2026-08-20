@@ -77,6 +77,12 @@ public class PropertyDtos {
 
         @NotBlank(message = "Full address is required")
         private String addressLine;
+
+        // Optional. Blank is allowed through so a cleared form field is not a 400;
+        // PropertyService normalises blank to null before it reaches the CHECK constraint.
+        @Pattern(regexp = "^$|^[1-9]\\d{5}$", message = "Pincode must be 6 digits and cannot start with 0")
+        private String pincode;
+
         private BigDecimal latitude;
         private BigDecimal longitude;
 
@@ -185,12 +191,16 @@ public class PropertyDtos {
         private String referenceCode;
 
         private String addressLine;
+        /** Six-digit PIN, or null on listings posted before it was collected. */
+        private String pincode;
         private BigDecimal latitude;
         private BigDecimal longitude;
         private String localityName;
         private String localitySlug;
         private String cityName;
         private String citySlug;
+        /** State of {@code cityName}, so clients can print "Locality, City, State PIN". */
+        private String cityState;
 
         @JsonProperty("isFeatured")
         private boolean isFeatured;
