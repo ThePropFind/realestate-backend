@@ -2,7 +2,10 @@ package com.realestate.controller;
 
 import com.realestate.dto.property.PropertyDtos.*;
 import com.realestate.dto.property.PropertySearchRequest;
+import com.realestate.dto.report.ReportDtos.ReportListingRequest;
+import com.realestate.dto.report.ReportDtos.ReportListingResponse;
 import com.realestate.entity.PropertyDocument;
+import com.realestate.service.PropertyReportService;
 import com.realestate.service.PropertyService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -32,7 +35,8 @@ import java.util.UUID;
 @Tag(name = "Properties", description = "Property listings — browse, create, manage")
 public class PropertyController {
 
-    private final PropertyService propertyService;
+    private final PropertyService       propertyService;
+    private final PropertyReportService reportService;
 
     // ─────────────────────────────────────────────
     // PUBLIC endpoints (no JWT needed)
@@ -148,6 +152,20 @@ public class PropertyController {
             request.getGuestName(), request.getGuestPhone());
 
         return ResponseEntity.ok(Map.of("message", "Inquiry sent successfully."));
+    }
+
+    // ── Reporting ─────────────────────────────────
+
+    @PostMapping("/{id}/reports")
+    @Operation(summary = "Report a listing (logged-in or guest)")
+    public ResponseEntity<ReportListingResponse> report(
+            @PathVariable UUID id,
+            @Valid @RequestBody ReportListingRequest request,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        String email = currentUser != null ? currentUser.getUsername() : null;
+        return ResponseEntity.status(HttpStatus.CREATED)
+            .body(reportService.report(id, request, email));
     }
 
     // ── Image management ──────────────────────────

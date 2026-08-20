@@ -102,6 +102,23 @@ public class Property {
     @Builder.Default
     private boolean parkingAvailable = false;
 
+    /**
+     * Number of parking slots. Refines {@link #parkingAvailable}, which stays as
+     * the coarse flag every existing row and the search filter rely on.
+     * Read as: parkingCount != null ? parkingCount : (parkingAvailable ? 1 : 0).
+     */
+    @Column(name = "parking_count")
+    private Short parkingCount;
+
+    /**
+     * Ready to move / under construction / new launch. Independent of
+     * {@link #availableFrom} (a concrete date) and {@link #ageOfProperty} (years) —
+     * neither can imply this without guessing, so it is never derived.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "possession_status", length = 24)
+    private PossessionStatus possessionStatus;
+
     // Who the lister prefers as a tenant — only meaningful for RENT / PG listings.
     @Enumerated(EnumType.STRING)
     @Column(name = "preferred_tenant", length = 20)
@@ -110,6 +127,10 @@ public class Property {
     // ── Location ──────────────────────────────────
     @Column(name = "address_line", columnDefinition = "TEXT")
     private String addressLine;
+
+    // Six-digit Indian PIN. Nullable — pre-V16 listings were never backfilled.
+    @Column(length = 6)
+    private String pincode;
 
     @Column(precision = 9, scale = 6)
     private BigDecimal latitude;
@@ -133,6 +154,17 @@ public class Property {
 
     @Column(name = "rejection_reason", columnDefinition = "TEXT")
     private String rejectionReason;
+
+    /**
+     * Backs the human-readable reference code buyers quote on a call
+     * ("PF000100001"). Assigned by the DB default (nextval on property_ref_seq),
+     * so concurrent inserts cannot collide; @Generated(INSERT) omits it from the
+     * INSERT and has Hibernate read the generated value straight back.
+     * The display string is derived in the mapper — this column stays numeric.
+     */
+    @org.hibernate.annotations.Generated(event = org.hibernate.generator.EventType.INSERT)
+    @Column(name = "ref_seq", insertable = false, updatable = false)
+    private Long refSeq;
 
     @Column(name = "views_count")
     @Builder.Default
@@ -251,6 +283,8 @@ public class Property {
     }
 
     public enum FurnishingStatus { UNFURNISHED, SEMI_FURNISHED, FULLY_FURNISHED }
+
+    public enum PossessionStatus { READY_TO_MOVE, UNDER_CONSTRUCTION, NEW_LAUNCH }
 
     public enum PreferredTenant { FAMILY, BACHELOR_MEN, BACHELOR_WOMEN, ANYONE }
 

@@ -31,6 +31,7 @@ public class PropertyService {
     private final UserRepository             userRepository;
     private final StorageService             imageUploadService;
     private final EmailService               emailService;
+    private final NearbyPlaceService         nearbyPlaceService;
 
     private static final int MAX_IMAGES_PER_PROPERTY    = 20;
     private static final int MAX_DOCUMENTS_PER_PROPERTY = 8;
@@ -131,8 +132,11 @@ public class PropertyService {
                 ? req.getAgeOfProperty().shortValue() : null)
             .availableFrom(req.getAvailableFrom())
             .parkingAvailable(req.isParkingAvailable())
+            .parkingCount(req.getParkingCount() != null ? req.getParkingCount().shortValue() : null)
+            .possessionStatus(req.getPossessionStatus())
             .preferredTenant(req.getPreferredTenant())
             .addressLine(req.getAddressLine())
+            .pincode(blankToNull(req.getPincode()))
             .latitude(req.getLatitude())
             .longitude(req.getLongitude())
             .amenities(amenities)
@@ -162,8 +166,12 @@ public class PropertyService {
             .expiresAt(LocalDateTime.now().plusDays(90))   // listing valid for 90 days
             .build();
 
-        property = propertyRepository.save(property);
-        log.info("Property created: {} by {}", property.getId(), ownerEmail);
+        // saveAndFlush, not save: ref_seq is assigned by the DB default and read back
+        // by @Generated(INSERT). A deferred flush would return referenceCode = null,
+        // since the UUID id is assigned in memory and nothing else forces the INSERT.
+        property = propertyRepository.saveAndFlush(property);
+        log.info("Property created: {} ({}) by {}",
+            property.getId(), referenceCode(property), ownerEmail);
         return toDetailResponse(property, true);   // owner gets to see their own docs
     }
 
@@ -205,9 +213,13 @@ public class PropertyService {
         property.setAgeOfProperty(req.getAgeOfProperty() != null ? req.getAgeOfProperty().shortValue() : null);
         property.setAvailableFrom(req.getAvailableFrom());
         property.setAddressLine(req.getAddressLine());
+        property.setPincode(blankToNull(req.getPincode()));
         property.setLatitude(req.getLatitude());
         property.setLongitude(req.getLongitude());
         property.setParkingAvailable(req.isParkingAvailable());
+        property.setParkingCount(req.getParkingCount() != null
+            ? req.getParkingCount().shortValue() : null);
+        property.setPossessionStatus(req.getPossessionStatus());
         property.setPreferredTenant(req.getPreferredTenant());
 
         // ── Phase B wizard fields ─────────────────
@@ -535,6 +547,24 @@ public class PropertyService {
             .build();
     }
 
+    /**
+     * Human-readable listing reference buyers quote on a call — "PF000100001".
+     * Derived from the ref_seq column rather than stored, so there is exactly one
+     * definition of the format. Null only for an entity that has not been flushed
+     * yet (the DB default assigns ref_seq on insert).
+     */
+    private String referenceCode(Property p) {
+        return p.getRefSeq() != null ? String.format("PF%09d", p.getRefSeq()) : null;
+    }
+
+    /**
+     * An omitted optional field and a cleared form field mean the same thing here.
+     * Storing "" would trip the V16 CHECK constraint, so it never reaches the column.
+     */
+    private static String blankToNull(String s) {
+        return (s == null || s.isBlank()) ? null : s.trim();
+    }
+
     private PropertyDetailResponse toDetailResponse(Property p, boolean includeDocuments) {
         List<ImageResponse> images = p.getImages().stream()
             .map(img -> ImageResponse.builder()
@@ -546,17 +576,22 @@ public class PropertyService {
             .toList();
 
         // Verification documents are PII-sensitive (survey numbers, EC entries, patta records).
-        // Only the property owner and admin should ever see them — never the public detail endpoint.
-        List<DocumentResponse> documents = includeDocuments
-            ? documentRepository.findByPropertyId(p.getId()).stream()
-                .map(d -> DocumentResponse.builder()
+        // The storage URL and the document id are owner/admin only — the public detail
+        // endpoint gets a summary projection that has no url field to leak in the first place.
+        // Buyers still see WHICH approvals exist, which is what the detail page renders.
+        List<PropertyDocumentView> documents = documentRepository.findByPropertyId(p.getId()).stream()
+            .map(d -> includeDocuments
+                ? (PropertyDocumentView) DocumentResponse.builder()
                     .id(d.getId())
                     .docType(d.getDocType().name())
                     .url(d.getUrl())
                     .label(d.getLabel())
+                    .build()
+                : (PropertyDocumentView) DocumentSummaryResponse.builder()
+                    .docType(d.getDocType().name())
+                    .label(d.getLabel())
                     .build())
-                .toList()
-            : java.util.Collections.emptyList();
+            .toList();
 
         List<AmenityResponse> amenities = p.getAmenities().stream()
             .map(a -> AmenityResponse.builder()
@@ -573,6 +608,8 @@ public class PropertyService {
             .phone(p.getOwner().getPhone())
             .profilePhotoUrl(p.getOwner().getProfilePhotoUrl())
             .role(p.getOwner().getRole().name())
+            .isEmailVerified(p.getOwner().isVerified())
+            .memberSince(p.getOwner().getCreatedAt())
             .build();
 
         return PropertyDetailResponse.builder()
@@ -599,14 +636,21 @@ public class PropertyService {
             .ageOfProperty(p.getAgeOfProperty() != null ? (int) p.getAgeOfProperty() : null)
             .availableFrom(p.getAvailableFrom())
             .parkingAvailable(p.isParkingAvailable())
+            .parkingCount(p.getParkingCount() != null ? (int) p.getParkingCount() : null)
+            .possessionStatus(p.getPossessionStatus() != null ? p.getPossessionStatus().name() : null)
+            .referenceCode(referenceCode(p))
+            .nearby(nearbyPlaceService.forLocality(
+                p.getLocality().getId(), p.getLocality().getCity().getId()))
             .preferredTenant(p.getPreferredTenant() != null ? p.getPreferredTenant().name() : null)
             .addressLine(p.getAddressLine())
+            .pincode(p.getPincode())
             .latitude(p.getLatitude())
             .longitude(p.getLongitude())
             .localityName(p.getLocality().getName())
             .localitySlug(p.getLocality().getSlug())
             .cityName(p.getLocality().getCity().getName())
             .citySlug(p.getLocality().getCity().getSlug())
+            .cityState(p.getLocality().getCity().getState())
             .isFeatured(p.isFeatured())
             .isVerified(p.isVerified())
             .viewsCount(p.getViewsCount())

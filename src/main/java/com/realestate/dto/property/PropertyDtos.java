@@ -66,11 +66,23 @@ public class PropertyDtos {
         private LocalDate availableFrom;
         private boolean parkingAvailable;
 
+        @Min(value = 0, message = "Parking count cannot be negative")
+        @Max(value = 20, message = "Parking count looks wrong")
+        private Integer parkingCount;
+
+        private Property.PossessionStatus possessionStatus;
+
         // Only meaningful for RENT / PG; frontend sends it only for those listing types.
         private Property.PreferredTenant preferredTenant;
 
         @NotBlank(message = "Full address is required")
         private String addressLine;
+
+        // Optional. Blank is allowed through so a cleared form field is not a 400;
+        // PropertyService normalises blank to null before it reaches the CHECK constraint.
+        @Pattern(regexp = "^$|^[1-9]\\d{5}$", message = "Pincode must be 6 digits and cannot start with 0")
+        private String pincode;
+
         private BigDecimal latitude;
         private BigDecimal longitude;
 
@@ -171,15 +183,24 @@ public class PropertyDtos {
         private Integer ageOfProperty;
         private LocalDate availableFrom;
         private boolean parkingAvailable;
+        /** Null when the seller never gave a count — clients fall back to parkingAvailable. */
+        private Integer parkingCount;
+        private String possessionStatus;
         private String preferredTenant;
+        /** Human-readable listing reference, e.g. "PF000100001". Server-assigned. */
+        private String referenceCode;
 
         private String addressLine;
+        /** Six-digit PIN, or null on listings posted before it was collected. */
+        private String pincode;
         private BigDecimal latitude;
         private BigDecimal longitude;
         private String localityName;
         private String localitySlug;
         private String cityName;
         private String citySlug;
+        /** State of {@code cityName}, so clients can print "Locality, City, State PIN". */
+        private String cityState;
 
         @JsonProperty("isFeatured")
         private boolean isFeatured;
@@ -219,11 +240,39 @@ public class PropertyDtos {
         private String promoterCitiesActive;
         private String promoterReraId;
 
-        private List<DocumentResponse> documents;
+        /** Curated nearby places for this listing's locality. Never null; may be empty. */
+        private List<NearbyPlaceResponse> nearby;
+
+        /**
+         * Verification documents. Typed as the view interface, not as
+         * {@link DocumentResponse}, so the public projection is incapable of
+         * carrying a storage URL: the public endpoint builds
+         * {@link DocumentSummaryResponse}, which has no url field to populate.
+         * Owner and admin endpoints build the full {@link DocumentResponse}.
+         */
+        private List<PropertyDocumentView> documents;
     }
 
+    /**
+     * Marker for the two document projections. Jackson serializes the concrete
+     * runtime type, so a summary emits two keys and the full response emits four.
+     */
+    public interface PropertyDocumentView {}
+
+    /**
+     * Public projection — never carries the storage URL or the document id.
+     * Verification documents hold PII (survey numbers, EC entries, patta records)
+     * and live in a private bucket read only through an admin presigned download.
+     */
     @Data @Builder
-    public static class DocumentResponse {
+    public static class DocumentSummaryResponse implements PropertyDocumentView {
+        private String docType;
+        private String label;
+    }
+
+    /** Owner/admin projection — includes the id the presigned download is keyed on. */
+    @Data @Builder
+    public static class DocumentResponse implements PropertyDocumentView {
         private UUID id;
         private String docType;
         private String url;
@@ -251,6 +300,18 @@ public class PropertyDtos {
         private int sortOrder;
     }
 
+    /**
+     * A curated nearby place. distanceLabel is a human-readable string
+     * ("2.4 km"), not a number — these are realistic but unsurveyed, and the
+     * type keeps clients from presenting them as precise measurements.
+     */
+    @Data @Builder
+    public static class NearbyPlaceResponse {
+        private String name;
+        private String kind;
+        private String distanceLabel;
+    }
+
     @Data @Builder
     public static class AmenityResponse {
         private UUID id;
@@ -260,15 +321,21 @@ public class PropertyDtos {
     }
 
     @Data @Builder
+    @JsonIgnoreProperties("emailVerified")
     public static class OwnerInfo {
         private UUID id;
         private String name;
         private String phone;
         private String profilePhotoUrl;
         private String role;
-        // Agent-specific fields (null for regular sellers)
-        private String agencyName;
-        private Double avgRating;
+        /**
+         * Email confirmed via OTP (User.verified, set only by AuthService.verifyOtp).
+         * This is NOT an identity check — clients must not label it "Verified Owner".
+         */
+        @JsonProperty("isEmailVerified")
+        private boolean isEmailVerified;
+        /** Account creation date — backs the "Member since" line on the owner card. */
+        private LocalDateTime memberSince;
     }
 
     // ─────────────────────────────────────────────

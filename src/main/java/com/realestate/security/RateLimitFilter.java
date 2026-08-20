@@ -27,6 +27,7 @@ import java.util.concurrent.ConcurrentHashMap;
  *
  * Property-write limits (storage spam / email-quota abuse — protects R2 bill):
  *   POST /properties/{id}/inquiries — 5 / hour  (also guards owner email quota)
+ *   POST /properties/{id}/reports   — 5 / hour  (shares the inquiry bucket)
  *   POST /properties                — 10 / day
  *   POST /properties/{id}/images    — 100 / hour
  *   POST /properties/{id}/documents — 40 / hour
@@ -103,9 +104,12 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (!path.startsWith("/properties"))  return null;
 
         if (path.matches("^/properties/[^/]+/inquiries/?$")
-         || path.matches("^/properties/[^/]+/site-visits/?$")) {
-            // Same 5/hr cap for both inquiries and site-visit bookings —
-            // they hit the same downstream (owner notification email).
+         || path.matches("^/properties/[^/]+/site-visits/?$")
+         || path.matches("^/properties/[^/]+/reports/?$")) {
+            // Same 5/hr cap for inquiries, site-visit bookings and listing reports.
+            // The first two hit the same downstream (owner notification email);
+            // reports share the bucket because they are the same shape of abuse —
+            // an unauthenticated POST that costs us a row and a human's attention.
             return inquiryBuckets.computeIfAbsent(ip, k ->
                 Bucket.builder()
                     .addLimit(Bandwidth.classic(5, Refill.greedy(5, Duration.ofHours(1))))
