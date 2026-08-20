@@ -6,6 +6,11 @@ target/
 
 # ─── Secrets — NEVER commit these ───────────
 .env
+
+# Hand-made backups of env files (.env.bak, .env.local.bak.<lan-ip>, …) — same secrets,
+# not covered by the rules above.
+.env*.bak*
+*.env.bak*
 *.pem
 *.key
 *.p12
