@@ -542,6 +542,11 @@ public class PropertyService {
             .isFeatured(p.isFeatured())
             .isVerified(p.isVerified())
             .primaryImageUrl(primaryImageUrl)
+            .imageCount(p.getImages().size())
+            .priceNegotiable(p.isPriceNegotiable())
+            .parkingCount(p.getParkingCount() != null
+                ? p.getParkingCount().intValue()
+                : (p.isParkingAvailable() ? 1 : 0))
             .viewsCount(p.getViewsCount())
             .createdAt(p.getCreatedAt())
             .build();

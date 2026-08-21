@@ -279,7 +279,21 @@ public class Property {
     public enum PropertyType {
         APARTMENT, INDEPENDENT_HOUSE, VILLA,
         PLOT, COMMERCIAL_OFFICE, COMMERCIAL_SHOP,
-        BUILDER_FLOOR, PG_HOSTEL, AGRICULTURAL_LAND
+        BUILDER_FLOOR, PG_HOSTEL, AGRICULTURAL_LAND, WAREHOUSE
+    }
+
+    /**
+     * Search-side vocabulary for the free-text {@link #facing} column.
+     *
+     * The column stays a String — it is written by the post wizard and rendered
+     * verbatim on the detail screens ("East"), so turning it into an enum column
+     * would shout "EAST" at users and reject any legacy value. Search instead
+     * matches {@code upper(facing)} against these names, which is case-insensitive
+     * by construction and needs no backfill to work.
+     */
+    public enum Facing {
+        NORTH, SOUTH, EAST, WEST,
+        NORTH_EAST, NORTH_WEST, SOUTH_EAST, SOUTH_WEST
     }
 
     public enum FurnishingStatus { UNFURNISHED, SEMI_FURNISHED, FULLY_FURNISHED }

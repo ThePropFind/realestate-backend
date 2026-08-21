@@ -21,6 +21,10 @@ import java.util.List;
  */
 public class PropertySpecification {
 
+    private static boolean notEmpty(List<?> list) {
+        return list != null && !list.isEmpty();
+    }
+
     /**
      * Admin listings filter — unlike {@link #build}, it does NOT pin status to ACTIVE:
      * admins see every status. Optional status filter + optional free-text search
@@ -125,6 +129,86 @@ public class PropertySpecification {
             // ── Featured only ─────────────────────────────
             if (Boolean.TRUE.equals(req.getFeaturedOnly())) {
                 predicates.add(cb.isTrue(root.get("isFeatured")));
+            }
+
+            // ── Multi-select localities ───────────────────
+            if (notEmpty(req.getLocalityIds())) {
+                Join<Object, Object> locJoin = root.join("locality", JoinType.INNER);
+                predicates.add(locJoin.get("id").in(req.getLocalityIds()));
+            }
+
+            // ── Possession / posted by / approval ─────────
+            if (notEmpty(req.getPossessionStatuses())) {
+                predicates.add(root.get("possessionStatus").in(req.getPossessionStatuses()));
+            }
+            if (notEmpty(req.getListedBys())) {
+                predicates.add(root.get("listedBy").in(req.getListedBys()));
+            }
+            if (notEmpty(req.getApprovalAuthorities())) {
+                predicates.add(root.get("approvalAuthority").in(req.getApprovalAuthorities()));
+            }
+
+            // ── Facing ────────────────────────────────────
+            // The column is free text ("East"), so compare upper-cased against the
+            // enum names rather than binding the enum directly.
+            if (notEmpty(req.getFacings())) {
+                List<String> names = req.getFacings().stream().map(Enum::name).toList();
+                predicates.add(cb.upper(root.get("facing")).in(names));
+            }
+
+            // ── Rooms / floor / age ───────────────────────
+            if (req.getMinBathrooms() != null) {
+                predicates.add(cb.greaterThanOrEqualTo(
+                    root.get("bathrooms").as(Integer.class), req.getMinBathrooms()));
+            }
+            if (req.getMaxFloor() != null) {
+                predicates.add(cb.lessThanOrEqualTo(
+                    root.get("floorNumber").as(Integer.class), req.getMaxFloor()));
+            }
+            if (req.getMaxAge() != null) {
+                predicates.add(cb.lessThanOrEqualTo(
+                    root.get("ageOfProperty").as(Integer.class), req.getMaxAge()));
+            }
+
+            // ── Boolean flags ─────────────────────────────
+            // parkingCount is the newer column and wins when set; fall back to the
+            // legacy boolean, mirroring the display rule on the entity.
+            if (Boolean.TRUE.equals(req.getParkingRequired())) {
+                predicates.add(cb.or(
+                    cb.isTrue(root.get("parkingAvailable")),
+                    cb.greaterThan(root.get("parkingCount").as(Integer.class), 0)
+                ));
+            }
+            if (Boolean.TRUE.equals(req.getVerifiedOnly())) {
+                predicates.add(cb.isTrue(root.get("isVerified")));
+            }
+            if (Boolean.TRUE.equals(req.getNegotiableOnly())) {
+                predicates.add(cb.isTrue(root.get("priceNegotiable")));
+            }
+
+            // ── Map viewport ──────────────────────────────
+            // All four corners required; a partial box is ignored rather than
+            // silently filtering on one axis.
+            if (req.getNeLat() != null && req.getNeLng() != null
+                && req.getSwLat() != null && req.getSwLng() != null) {
+                predicates.add(cb.between(root.get("latitude"),  req.getSwLat(), req.getNeLat()));
+                predicates.add(cb.between(root.get("longitude"), req.getSwLng(), req.getNeLng()));
+            }
+
+            // ── Amenities — "has ALL of these", not any-of ─
+            // A plain join would return a listing matching only one of them, and
+            // would multiply rows against the query.distinct(true) below (breaking
+            // page counts). A correlated COUNT subquery keeps one row per property.
+            if (notEmpty(req.getAmenityIds()) && query != null) {
+                Subquery<Long> sub = query.subquery(Long.class);
+                Root<Property> subRoot = sub.from(Property.class);
+                Join<Object, Object> subAmenity = subRoot.join("amenities", JoinType.INNER);
+                sub.select(cb.countDistinct(subAmenity.get("id")))
+                   .where(
+                       cb.equal(subRoot.get("id"), root.get("id")),
+                       subAmenity.get("id").in(req.getAmenityIds())
+                   );
+                predicates.add(cb.equal(sub, (long) req.getAmenityIds().size()));
             }
 
             // ── Keyword search (title, description, or city name) ─────

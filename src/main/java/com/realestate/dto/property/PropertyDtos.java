@@ -146,6 +146,14 @@ public class PropertyDtos {
         @JsonProperty("isVerified")
         private boolean isVerified;
         private String primaryImageUrl;
+        // Total photos on the listing — drives the "N Photos" pill on cards.
+        private int imageCount;
+        // Map carousel renders a "Negotiable" badge and a Parking spec.
+        // No @JsonProperty needed — Lombok's isPriceNegotiable() already
+        // serializes as "priceNegotiable" (unlike isFeatured/isVerified above,
+        // whose field names start with "is").
+        private boolean priceNegotiable;
+        private Integer parkingCount;
         private int viewsCount;
         private LocalDateTime createdAt;
     }

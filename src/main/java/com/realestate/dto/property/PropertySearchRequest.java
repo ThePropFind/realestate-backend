@@ -23,6 +23,8 @@ public class PropertySearchRequest {
     // Location
     private String citySlug;
     private UUID   localityId;
+    /** Multi-select localities — OR'd together. */
+    private List<UUID> localityIds;
 
     // Type filters — single value (kept for backward compat / simple links)
     private Property.ListingType    listingType;
@@ -47,6 +49,32 @@ public class PropertySearchRequest {
     // Other filters
     private Property.FurnishingStatus furnishing;
     private Boolean featuredOnly;
+
+    // ── Advanced filters (the redesigned filter screen) ──────────
+    // All multi-selects are OR within a group, AND across groups.
+    private List<Property.PossessionStatus>   possessionStatuses;
+    private List<Property.ListedBy>           listedBys;
+    private List<Property.Facing>             facings;
+    private List<Property.ApprovalAuthority>  approvalAuthorities;
+
+    /** "Has ALL of these" — not any-of. See PropertySpecification. */
+    private List<UUID> amenityIds;
+
+    private Integer minBathrooms;
+    /** Highest acceptable floor number (e.g. "ground to 3rd"). */
+    private Integer maxFloor;
+    /** Highest acceptable age in years; 0 means new construction only. */
+    private Integer maxAge;
+
+    private Boolean parkingRequired;
+    private Boolean verifiedOnly;
+    private Boolean negotiableOnly;
+
+    // Map viewport (bounding box) — all four are required together.
+    private BigDecimal neLat;
+    private BigDecimal neLng;
+    private BigDecimal swLat;
+    private BigDecimal swLng;
 
     // Keyword
     private String keyword;
