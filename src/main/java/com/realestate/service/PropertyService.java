@@ -270,6 +270,7 @@ public class PropertyService {
         }
 
         imageUploadService.deleteAllPropertyImages(id);
+        imageUploadService.deleteAllPropertyVideos(id);
         imageUploadService.deleteAllPropertyDocuments(id);
         propertyRepository.delete(property);
         log.info("Property deleted: {} by {}", id, requestorEmail);
@@ -344,6 +345,57 @@ public class PropertyService {
 
         imageUploadService.deleteImage(image.getUrl());
         imageRepository.delete(image);
+    }
+
+    // ─────────────────────────────────────────────
+    // VIDEO (walkthrough) — one per listing
+    // ─────────────────────────────────────────────
+
+    /**
+     * Upload (or replace) the listing walkthrough.
+     *
+     * There is exactly one video per property, so a second upload replaces the
+     * first — and the old object is deleted from storage AFTER the new URL is in
+     * hand. Doing it the other way round would leave the listing videoless if the
+     * upload then failed.
+     */
+    @Transactional
+    public VideoResponse uploadVideo(UUID propertyId, MultipartFile file, String ownerEmail) {
+        Property property = propertyRepository.findByIdForUpdate(propertyId)
+            .orElseThrow(() -> new ResourceNotFoundException("Property", propertyId));
+
+        if (!property.getOwner().getEmail().equals(ownerEmail)) {
+            throw new UnauthorizedException("You can only upload a video to your own listings");
+        }
+
+        String previousUrl = property.getVideoUrl();
+        String url = imageUploadService.uploadPropertyVideo(file, propertyId);
+
+        property.setVideoUrl(url);
+        propertyRepository.save(property);
+
+        if (previousUrl != null && !previousUrl.equals(url)) {
+            imageUploadService.deleteVideo(previousUrl);
+        }
+        log.info("Video set on property {} by {}", propertyId, ownerEmail);
+        return VideoResponse.builder().videoUrl(url).build();
+    }
+
+    @Transactional
+    public void deleteVideo(UUID propertyId, String ownerEmail) {
+        Property property = propertyRepository.findById(propertyId)
+            .orElseThrow(() -> new ResourceNotFoundException("Property", propertyId));
+
+        if (!property.getOwner().getEmail().equals(ownerEmail)) {
+            throw new UnauthorizedException("You can only delete a video from your own listings");
+        }
+
+        String url = property.getVideoUrl();
+        if (url == null) return;   // already gone — deleting nothing is not an error
+
+        property.setVideoUrl(null);
+        propertyRepository.save(property);
+        imageUploadService.deleteVideo(url);
     }
 
     // ─────────────────────────────────────────────
@@ -686,6 +738,7 @@ public class PropertyService {
             .promoterCitiesActive(p.getPromoterCitiesActive())
             .promoterReraId(p.getPromoterReraId())
             .documents(documents)
+            .videoUrl(p.getVideoUrl())
             .build();
     }
 

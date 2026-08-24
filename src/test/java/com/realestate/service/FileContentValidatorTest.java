@@ -17,6 +17,9 @@ class FileContentValidatorTest {
     private static final byte[] PNG  = {(byte) 0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
     private static final byte[] WEBP = {'R', 'I', 'F', 'F', 0, 0, 0, 0, 'W', 'E', 'B', 'P'};
     private static final byte[] PDF  = {'%', 'P', 'D', 'F', '-', '1', '.', '4'};
+    // ISO base media: 4-byte box size, then the literal "ftyp", then the brand.
+    private static final byte[] MP4  = {0, 0, 0, 0x18, 'f', 't', 'y', 'p', 'm', 'p', '4', '2'};
+    private static final byte[] MOV  = {0, 0, 0, 0x14, 'f', 't', 'y', 'p', 'q', 't', ' ', ' '};
 
     private MockMultipartFile file(byte[] content, String declaredType) {
         return new MockMultipartFile("file", "upload", declaredType, content);
@@ -44,6 +47,29 @@ class FileContentValidatorTest {
         assertThatThrownBy(() -> FileContentValidator.validateImage(fake))
             .isInstanceOf(BadRequestException.class);
         assertThatThrownBy(() -> FileContentValidator.validateDocument(fake))
+            .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void realVideos_passVideoValidation() {
+        assertThatCode(() -> FileContentValidator.validateVideo(file(MP4, "video/mp4"))).doesNotThrowAnyException();
+        assertThatCode(() -> FileContentValidator.validateVideo(file(MOV, "video/quicktime"))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void video_isNotAnImageAndNotADocument() {
+        // A 50 MB walkthrough must never slip through the photo or the EC slot.
+        assertThatThrownBy(() -> FileContentValidator.validateImage(file(MP4, "image/jpeg")))
+            .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> FileContentValidator.validateDocument(file(MP4, "application/pdf")))
+            .isInstanceOf(BadRequestException.class);
+    }
+
+    @Test
+    void nonVideoRejectedAsVideo() {
+        assertThatThrownBy(() -> FileContentValidator.validateVideo(file(JPEG, "video/mp4")))
+            .isInstanceOf(BadRequestException.class);
+        assertThatThrownBy(() -> FileContentValidator.validateVideo(file("not a video".getBytes(), "video/mp4")))
             .isInstanceOf(BadRequestException.class);
     }
 

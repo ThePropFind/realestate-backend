@@ -26,6 +26,19 @@ public interface StorageService {
     void deleteAllPropertyImages(UUID propertyId);
 
     /**
+     * Upload a property walkthrough video and return its publicly accessible URL.
+     * Stored under videos/{propertyId}/{uuid}.{ext} in the same public bucket as
+     * images — a walkthrough is marketing material, not a private document.
+     */
+    String uploadPropertyVideo(MultipartFile file, UUID propertyId);
+
+    /** Delete a single video by its URL. */
+    void deleteVideo(String videoUrl);
+
+    /** Delete all videos for a property (called on property deletion). */
+    void deleteAllPropertyVideos(UUID propertyId);
+
+    /**
      * Upload a property verification document (PDF or image) and return its public URL.
      * Stored under documents/{propertyId}/{uuid}.{ext}.
      */

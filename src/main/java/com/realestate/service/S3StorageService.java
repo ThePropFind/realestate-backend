@@ -38,6 +38,10 @@ public class S3StorageService implements StorageService {
 
     private static final long         MAX_FILE_SIZE   = 10 * 1024 * 1024L;
     private static final long         MAX_DOC_SIZE    = 15 * 1024 * 1024L;
+    private static final long         MAX_VIDEO_SIZE  = 50 * 1024 * 1024L; // a ~60s phone walkthrough
+    private static final List<String> ALLOWED_VIDEO_TYPES = List.of(
+        "video/mp4", "video/quicktime"
+    );
     private static final List<String> ALLOWED_TYPES   = List.of(
         "image/jpeg", "image/jpg", "image/png", "image/webp"
     );
@@ -181,8 +185,91 @@ public class S3StorageService implements StorageService {
             case "image/png"               -> "png";
             case "image/webp"              -> "webp";
             case "application/pdf"         -> "pdf";
+            case "video/mp4"               -> "mp4";
+            case "video/quicktime"         -> "mov";
             default                        -> "jpg";
         };
+    }
+
+    // ─────────────────────────────────────────────
+    // Video (walkthrough)
+    // ─────────────────────────────────────────────
+
+    /**
+     * Walkthroughs go in the PUBLIC image bucket, not the private documents one:
+     * a buyer's phone streams the file straight off the CDN URL, and a presigned
+     * GET would expire mid-playback.
+     */
+    @Override
+    public String uploadPropertyVideo(MultipartFile file, UUID propertyId) {
+        validateVideo(file);
+
+        String ext = getExtension(file.getContentType());
+        String key = "videos/%s/%s.%s".formatted(propertyId, UUID.randomUUID(), ext);
+
+        try {
+            PutObjectRequest putReq = PutObjectRequest.builder()
+                .bucket(bucket)
+                .key(key)
+                .contentType(file.getContentType())
+                .contentLength(file.getSize())
+                .build();
+
+            s3Client.putObject(putReq, RequestBody.fromInputStream(file.getInputStream(), file.getSize()));
+
+            String url = imageBaseUrl + "/" + key;
+            log.info("Video uploaded: {}", url);
+            return url;
+
+        } catch (IOException e) {
+            log.error("S3 video upload failed for property {}: {}", propertyId, e.getMessage());
+            throw new RuntimeException("Video upload failed. Please try again.", e);
+        }
+    }
+
+    @Override
+    public void deleteVideo(String videoUrl) {
+        String key = extractKeyFromUrl(videoUrl);
+        if (key == null) return;
+        try {
+            s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+            log.info("S3 video deleted: {}", key);
+        } catch (Exception e) {
+            log.warn("Could not delete S3 video for URL: {}", videoUrl);
+        }
+    }
+
+    @Override
+    public void deleteAllPropertyVideos(UUID propertyId) {
+        String prefix = "videos/%s/".formatted(propertyId);
+        try {
+            var listReq = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix).build();
+            var objects = s3Client.listObjectsV2(listReq).contents();
+            if (objects.isEmpty()) return;
+
+            List<ObjectIdentifier> toDelete = objects.stream()
+                .map(o -> ObjectIdentifier.builder().key(o.key()).build())
+                .collect(Collectors.toList());
+
+            s3Client.deleteObjects(DeleteObjectsRequest.builder()
+                .bucket(bucket)
+                .delete(d -> d.objects(toDelete))
+                .build());
+
+            log.info("Deleted {} S3 videos for property {}", toDelete.size(), propertyId);
+        } catch (Exception e) {
+            log.warn("Could not delete S3 videos for property {}: {}", propertyId, e.getMessage());
+        }
+    }
+
+    private void validateVideo(MultipartFile file) {
+        if (file == null || file.isEmpty())
+            throw new BadRequestException("No file provided");
+        if (file.getSize() > MAX_VIDEO_SIZE)
+            throw new BadRequestException("Video size exceeds 50 MB limit");
+        if (!ALLOWED_VIDEO_TYPES.contains(file.getContentType()))
+            throw new BadRequestException("Invalid video type. Only MP4 and MOV are allowed.");
+        FileContentValidator.validateVideo(file);
     }
 
     // ─────────────────────────────────────────────

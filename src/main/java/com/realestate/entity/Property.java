@@ -255,6 +255,15 @@ public class Property {
     @Column(name = "promoter_rera_id", length = 60)
     private String promoterReraId;
 
+    // ── Media ─────────────────────────────────────
+    /**
+     * Public URL of the walkthrough video (V19). One per listing — a seller
+     * shoots a single walkthrough, so this is a column rather than a table.
+     * Null when none was uploaded.
+     */
+    @Column(name = "video_url", length = 500)
+    private String videoUrl;
+
     // ── Relationships ─────────────────────────────
     @OneToMany(mappedBy = "property", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")

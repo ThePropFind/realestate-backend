@@ -197,6 +197,33 @@ public class PropertyController {
         return ResponseEntity.noContent().build();
     }
 
+    // ── Video (walkthrough) ───────────────────────
+
+    @PostMapping("/{id}/video")
+    @Operation(summary = "Upload or replace the walkthrough video for a property (MP4/MOV, max 50 MB)",
+               security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<VideoResponse> uploadVideo(
+            @PathVariable UUID id,
+            @RequestParam("file") MultipartFile file,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        return ResponseEntity.status(HttpStatus.CREATED).body(
+            propertyService.uploadVideo(id, file, currentUser.getUsername())
+        );
+    }
+
+    @DeleteMapping("/{id}/video")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    @Operation(summary = "Remove the walkthrough video from a property",
+               security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<Void> deleteVideo(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        propertyService.deleteVideo(id, currentUser.getUsername());
+        return ResponseEntity.noContent().build();
+    }
+
     // ── Documents (FMB / EC / Patta / Approval letter) ────────
 
     @PostMapping("/{id}/documents")

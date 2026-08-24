@@ -29,6 +29,10 @@ public class ImageUploadService implements StorageService {
 
     private static final long         MAX_FILE_SIZE   = 10 * 1024 * 1024L; // 10 MB
     private static final long         MAX_DOC_SIZE    = 15 * 1024 * 1024L; // 15 MB for PDFs
+    private static final long         MAX_VIDEO_SIZE  = 50 * 1024 * 1024L; // 50 MB — a ~60s phone walkthrough
+    private static final List<String> ALLOWED_VIDEO_TYPES = List.of(
+        "video/mp4", "video/quicktime"
+    );
     private static final List<String> ALLOWED_TYPES   = List.of(
         "image/jpeg", "image/jpg", "image/png", "image/webp"
     );
@@ -145,8 +149,66 @@ public class ImageUploadService implements StorageService {
             case "image/png"               -> "png";
             case "image/webp"              -> "webp";
             case "application/pdf"         -> "pdf";
+            case "video/mp4"               -> "mp4";
+            case "video/quicktime"         -> "mov";
             default                        -> "jpg";
         };
+    }
+
+    // ─────────────────────────────────────────────
+    // Video (walkthrough)
+    // ─────────────────────────────────────────────
+
+    @Override
+    public String uploadPropertyVideo(MultipartFile file, UUID propertyId) {
+        validateVideo(file);
+
+        String ext      = getExtension(file.getContentType());
+        String filename = UUID.randomUUID() + "." + ext;
+        Path   dir      = uploadRoot.resolve("videos").resolve(propertyId.toString());
+        Path   dest     = dir.resolve(filename);
+
+        try {
+            Files.createDirectories(dir);
+            file.transferTo(dest);
+            String url = "%s/uploads/videos/%s/%s".formatted(baseUrl, propertyId, filename);
+            log.info("Video saved: {}", url);
+            return url;
+        } catch (IOException e) {
+            log.error("Failed to save video for property {}: {}", propertyId, e.getMessage());
+            throw new RuntimeException("Video upload failed. Please try again.", e);
+        }
+    }
+
+    @Override
+    public void deleteVideo(String videoUrl) {
+        // Same on-disk layout as deleteImage — everything lives under /uploads/
+        deleteImage(videoUrl);
+    }
+
+    @Override
+    public void deleteAllPropertyVideos(UUID propertyId) {
+        try {
+            Path dir = uploadRoot.resolve("videos").resolve(propertyId.toString());
+            if (Files.exists(dir)) {
+                try (var stream = Files.walk(dir)) {
+                    stream.sorted(java.util.Comparator.reverseOrder())
+                          .forEach(p -> { try { Files.delete(p); } catch (IOException ignored) {} });
+                }
+            }
+        } catch (Exception e) {
+            log.warn("Could not clean videos for property {}: {}", propertyId, e.getMessage());
+        }
+    }
+
+    private void validateVideo(MultipartFile file) {
+        if (file == null || file.isEmpty())
+            throw new BadRequestException("No file provided");
+        if (file.getSize() > MAX_VIDEO_SIZE)
+            throw new BadRequestException("Video size exceeds 50 MB limit");
+        if (!ALLOWED_VIDEO_TYPES.contains(file.getContentType()))
+            throw new BadRequestException("Invalid video type. Only MP4 and MOV are allowed.");
+        FileContentValidator.validateVideo(file);
     }
 
     // ─────────────────────────────────────────────

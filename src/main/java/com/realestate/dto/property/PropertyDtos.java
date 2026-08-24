@@ -218,6 +218,8 @@ public class PropertyDtos {
         private int inquiryCount;
 
         private List<ImageResponse> images;
+        /** Public URL of the walkthrough video (V19). Null when none was uploaded. */
+        private String videoUrl;
         private List<AmenityResponse> amenities;
         private OwnerInfo owner;
         private LocalDateTime createdAt;
@@ -297,6 +299,12 @@ public class PropertyDtos {
     // ─────────────────────────────────────────────
     // Nested response types
     // ─────────────────────────────────────────────
+
+    /** Response of the video upload endpoint — just the new public URL. */
+    @Data @Builder
+    public static class VideoResponse {
+        private String videoUrl;
+    }
 
     @Data @Builder
     @JsonIgnoreProperties("primary")
