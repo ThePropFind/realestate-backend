@@ -27,7 +27,7 @@
         <springdoc.version>2.5.0</springdoc.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
         <lombok.version>1.18.32</lombok.version>
-        <sentry.version>7.18.1</sentry.version>
+        <sentry.version>8.43.2</sentry.version>
     </properties>
 
     <!-- FIX 1: AWS BOM belongs in dependencyManagement, NOT in dependencies -->
