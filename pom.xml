@@ -26,7 +26,7 @@
         <aws.sdk.version>2.25.60</aws.sdk.version>
         <springdoc.version>2.5.0</springdoc.version>
         <mapstruct.version>1.5.5.Final</mapstruct.version>
-        <lombok.version>1.18.32</lombok.version>
+        <lombok.version>1.18.46</lombok.version>
         <sentry.version>7.18.1</sentry.version>
     </properties>
 
