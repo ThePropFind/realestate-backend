@@ -149,6 +149,7 @@ public class PropertyService {
             .cornerPlot(req.getCornerPlot())
             .approvalAuthority(req.getApprovalAuthority())
             .ownershipType(req.getOwnershipType())
+            .plotUse(req.getPlotUse())
             .soilType(req.getSoilType())
             .waterSource(req.getWaterSource())
             .hasWell(req.getHasWell())
@@ -232,6 +233,7 @@ public class PropertyService {
         property.setCornerPlot(req.getCornerPlot());
         property.setApprovalAuthority(req.getApprovalAuthority());
         property.setOwnershipType(req.getOwnershipType());
+        property.setPlotUse(req.getPlotUse());
         property.setSoilType(req.getSoilType());
         property.setWaterSource(req.getWaterSource());
         property.setHasWell(req.getHasWell());
@@ -345,6 +347,53 @@ public class PropertyService {
 
         imageUploadService.deleteImage(image.getUrl());
         imageRepository.delete(image);
+    }
+
+    // ─────────────────────────────────────────────
+    // IMAGE — SET PRIMARY (cover)
+    // ─────────────────────────────────────────────
+
+    /**
+     * Promote an image that is already on the listing to cover.
+     *
+     * Fixes regression #90. Before this the cover could only be chosen at upload
+     * time (`POST /images?setPrimary=true`), so re-covering an existing listing
+     * meant deleting the current cover and re-uploading — the web edit screen
+     * had to tell sellers exactly that.
+     *
+     * Row-locks the property for the same reason uploadImage does (#43): clearing
+     * the flag and setting it are two statements, and two concurrent calls could
+     * otherwise interleave and leave a listing with two primaries or none.
+     */
+    @Transactional
+    public ImageResponse setPrimaryImage(UUID propertyId, UUID imageId, String ownerEmail) {
+        Property property = propertyRepository.findByIdForUpdate(propertyId)
+            .orElseThrow(() -> new ResourceNotFoundException("Property", propertyId));
+
+        if (!property.getOwner().getEmail().equals(ownerEmail)) {
+            throw new UnauthorizedException("You can only change the cover of your own listings");
+        }
+
+        PropertyImage image = imageRepository.findById(imageId)
+            .orElseThrow(() -> new ResourceNotFoundException("Image", imageId));
+
+        // Same IDOR guard as deleteImage: the image must belong to the property
+        // in the path, or an owner could re-cover someone else's listing by
+        // pairing their own propertyId with a foreign imageId.
+        if (!image.getProperty().getId().equals(propertyId)) {
+            throw new ResourceNotFoundException("Image", imageId);
+        }
+
+        imageRepository.clearPrimaryFlag(propertyId);
+        image.setPrimary(true);
+        image = imageRepository.save(image);
+
+        return ImageResponse.builder()
+            .id(image.getId())
+            .url(image.getUrl())
+            .isPrimary(image.isPrimary())
+            .sortOrder(image.getSortOrder())
+            .build();
     }
 
     // ─────────────────────────────────────────────
@@ -726,6 +775,7 @@ public class PropertyService {
             .cornerPlot(p.getCornerPlot())
             .approvalAuthority(p.getApprovalAuthority() != null ? p.getApprovalAuthority().name() : null)
             .ownershipType(p.getOwnershipType() != null ? p.getOwnershipType().name() : null)
+            .plotUse(p.getPlotUse() != null ? p.getPlotUse().name() : null)
             .soilType(p.getSoilType() != null ? p.getSoilType().name() : null)
             .waterSource(p.getWaterSource() != null ? p.getWaterSource().name() : null)
             .hasWell(p.getHasWell())
@@ -784,7 +834,15 @@ public class PropertyService {
 
         propertyRepository.incrementInquiryCount(propertyId);
 
-        // Notify owner by email (async — does not block the response)
+        // Notify owner by email (async — does not block the response), unless
+        // they turned it off in Settings. Checked here rather than inside
+        // EmailService: that class also sends the verification and reset OTPs,
+        // which are security mail and must never consult a preference.
+        if (!property.getOwner().isNotifyEmailInquiries()) {
+            log.debug("Owner {} has inquiry emails off; skipping notification for property {}",
+                property.getOwner().getId(), propertyId);
+            return;
+        }
         try {
             emailService.sendInquiryNotification(
                 property.getOwner().getEmail(),

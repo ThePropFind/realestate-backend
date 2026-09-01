@@ -217,6 +217,18 @@ public class Property {
     @Column(name = "ownership_type", length = 20)
     private OwnershipType ownershipType;
 
+    /**
+     * Residential / commercial / industrial, for PLOT listings only (V21).
+     *
+     * propertyType has one PLOT value for all three, so without this the
+     * distinction the post wizard collects cannot survive a round trip — see
+     * regression #91. NULL for every non-plot listing and for plots posted
+     * before V21; treat NULL as "unspecified", never as RESIDENTIAL.
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "plot_use", length = 20)
+    private PlotUse plotUse;
+
     // ── Agricultural land fields ──────────────────
     @Enumerated(EnumType.STRING)
     @Column(name = "soil_type", length = 20)
@@ -322,6 +334,9 @@ public class Property {
     public enum ApprovalAuthority { DTCP, CMDA, TNHB, CMA, RERA, LOCAL, OTHER, NONE }
 
     public enum OwnershipType { SINGLE, JOINT, GIFT, INHERITED, COMPANY, TRUST }
+
+    /** Intended use of a PLOT listing — the distinction propertyType cannot carry. */
+    public enum PlotUse { RESIDENTIAL, COMMERCIAL, INDUSTRIAL }
 
     public enum SoilType { RED, BLACK, ALLUVIAL, LATERITE, SANDY, CLAY, LOAM, OTHER }
 

@@ -197,6 +197,19 @@ public class PropertyController {
         return ResponseEntity.noContent().build();
     }
 
+    @PatchMapping("/{id}/images/{imageId}/primary")
+    @Operation(summary = "Make an existing image the cover photo",
+               security = @SecurityRequirement(name = "bearerAuth"))
+    public ResponseEntity<ImageResponse> setPrimaryImage(
+            @PathVariable UUID id,
+            @PathVariable UUID imageId,
+            @AuthenticationPrincipal UserDetails currentUser) {
+
+        return ResponseEntity.ok(
+            propertyService.setPrimaryImage(id, imageId, currentUser.getUsername())
+        );
+    }
+
     // ── Video (walkthrough) ───────────────────────
 
     @PostMapping("/{id}/video")

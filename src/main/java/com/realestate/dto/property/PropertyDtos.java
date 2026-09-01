@@ -101,6 +101,8 @@ public class PropertyDtos {
         private Boolean cornerPlot;
         private Property.ApprovalAuthority approvalAuthority;
         private Property.OwnershipType ownershipType;
+        /** PLOT listings only — the distinction propertyType's single PLOT value cannot carry. */
+        private Property.PlotUse plotUse;
 
         // Agri
         private Property.SoilType soilType;
@@ -236,6 +238,8 @@ public class PropertyDtos {
         private Boolean cornerPlot;
         private String approvalAuthority;
         private String ownershipType;
+        /** RESIDENTIAL / COMMERCIAL / INDUSTRIAL on a PLOT; null on everything else. */
+        private String plotUse;
 
         private String soilType;
         private String waterSource;

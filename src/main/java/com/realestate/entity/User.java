@@ -69,6 +69,17 @@ public class User {
     @Column(name = "last_login_at")
     private LocalDateTime lastLoginAt;
 
+    /**
+     * Send the "someone enquired about your listing" email? (V20)
+     *
+     * The only opt-out the app has: verification and password-reset OTPs are
+     * security mail and are sent regardless. Defaults true — an account created
+     * before this column existed was already receiving them.
+     */
+    @Column(name = "notify_email_inquiries", nullable = false)
+    @Builder.Default
+    private boolean notifyEmailInquiries = true;
+
     @CreatedDate
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
